@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestNewDecoder(t *testing.T) {
@@ -378,24 +379,24 @@ func TestUnmarshal_Float(t *testing.T) {
 
 }
 
-//func TestUnmarshal_Time(t *testing.T) {
-//	var (
-//		tm time.Time
-//	)
-//	decoded := time.Date(2016, time.January, 02, 12, 42, 43, 5, time.FixedZone("America/New_York", 0))
-//	if encoded, err := Marshal(decoded.UnixNano()); err != nil {
-//		t.Error(err)
-//	} else if err := Unmarshal(encoded, &tm); err != nil {
-//		t.Error(err)
-//	} else if !decoded.Equal(tm) {
-//		t.Errorf("unexpected time value, expected %v got %v.", decoded, tm)
-//	}
-//
-//	if encoded, err := Marshal(0); err != nil {
-//		t.Error(err)
-//	} else if err := Unmarshal(encoded, &tm); err != nil {
-//		t.Error(err)
-//	} else if !tm.IsZero() {
-//		t.Errorf("time should be a zero value, got %v.", tm)
-//	}
-//}
+func TestUnmarshal_Time(t *testing.T) {
+	var (
+		tm time.Time
+	)
+	decoded := time.Date(2016, time.January, 02, 12, 42, 43, 5, time.FixedZone("America/New_York", 0))
+	if encoded, err := Marshal(decoded.UnixNano()); err != nil {
+		t.Error(err)
+	} else if err := Unmarshal(encoded, &tm); err != nil {
+		t.Error(err)
+	} else if !decoded.Equal(tm) {
+		t.Errorf("unexpected time value, expected %v got %v.", decoded, tm)
+	}
+
+	if encoded, err := Marshal(0); err != nil {
+		t.Error(err)
+	} else if err := Unmarshal(encoded, &tm); err != nil {
+		t.Error(err)
+	} else if !tm.IsZero() {
+		t.Errorf("time should be a zero value, got %v.", tm)
+	}
+}

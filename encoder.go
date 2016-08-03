@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"time"
 )
 
 // Encoder can write go values to an output stream, encoding them in packstream format.
@@ -36,6 +37,9 @@ Marshal can encode the following go values:
 	[]interface{}
 	map[string]interface{}
 	Structure
+	time.Time
+
+To marshal a time.Time, it stores the int64 returned by time.UnixNano(). If the time is a zero value, it stores 0.
 */
 func Marshal(v interface{}) (p []byte, err error) {
 	var b bytes.Buffer
@@ -52,19 +56,19 @@ func Marshal(v interface{}) (p []byte, err error) {
 // See the documentation for Marshal for details about the conversion of Go values to packstream.
 func (e *Encoder) Encode(v interface{}) (err error) {
 	if v == nil {
-		err = e.encodeNull()
+		err = e.marshalNull()
 	} else {
-		err = e.encode(reflect.ValueOf(v))
+		err = e.marshal(reflect.ValueOf(v))
 	}
 	return
 }
 
-func (e *Encoder) encode(rv reflect.Value) (err error) {
+func (e *Encoder) marshal(rv reflect.Value) (err error) {
 	for {
 		if rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Slice || rv.Kind() == reflect.Map ||
 			rv.Kind() == reflect.Interface {
 			if rv.IsNil() {
-				err = e.encodeNull()
+				err = e.marshalNull()
 				return
 			}
 		}
@@ -77,10 +81,10 @@ func (e *Encoder) encode(rv reflect.Value) (err error) {
 
 	if rv.Kind() == reflect.Interface {
 		if m, ok := rv.Interface().(Marshaler); ok {
-			err = e.encodeMarshaler(m)
+			err = e.marshalMarshaler(m)
 			return
 		}
-		return e.encode(rv.Elem())
+		return e.marshal(rv.Elem())
 	}
 
 	switch rv.Kind() {
@@ -88,28 +92,31 @@ func (e *Encoder) encode(rv reflect.Value) (err error) {
 		err = ErrMarshalTypeError
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8,
 		reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		err = e.encodeInt(rv)
+		err = e.marshalInt(rv)
 	case reflect.Float32, reflect.Float64:
-		err = e.encodeFloat(rv)
+		err = e.marshalFloat(rv)
 	case reflect.Bool:
-		err = e.encodeBool(rv)
+		err = e.marshalBool(rv)
 	case reflect.String:
-		err = e.encodeString(rv)
+		err = e.marshalString(rv)
 	case reflect.Slice:
 		if rv.Type().Elem().Kind() == reflect.Uint8 {
-			err = e.encodeByteSlice(rv)
+			err = e.marshalByteSlice(rv)
 		} else {
-			err = e.encodeList(rv)
+			err = e.marshalList(rv)
 		}
 	case reflect.Map:
 		if rv.Type().Key().Kind() != reflect.String {
 			err = ErrMarshalTypeError
 		} else {
-			err = e.encodeMap(rv)
+			err = e.marshalMap(rv)
 		}
 	case reflect.Struct:
-		if rv.Type() == structType {
-			err = e.encodeStruct(rv)
+		typ := rv.Type()
+		if typ == structType {
+			err = e.marshalStruct(rv)
+		} else if typ.PkgPath() == "time" && typ.Name() == "Time" {
+			err = e.marshalTime(rv)
 		} else {
 			err = ErrMarshalTypeError
 		}
@@ -117,7 +124,7 @@ func (e *Encoder) encode(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeString(rv reflect.Value) (err error) {
+func (e *Encoder) marshalString(rv reflect.Value) (err error) {
 	p := []byte(rv.String())
 	n := len(p)
 	switch {
@@ -153,7 +160,7 @@ func (e *Encoder) encodeString(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeByteSlice(rv reflect.Value) (err error) {
+func (e *Encoder) marshalByteSlice(rv reflect.Value) (err error) {
 	p := rv.Bytes()
 	n := len(p)
 	switch {
@@ -185,7 +192,7 @@ func (e *Encoder) encodeByteSlice(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeStruct(rv reflect.Value) (err error) {
+func (e *Encoder) marshalStruct(rv reflect.Value) (err error) {
 	sig := byte(rv.FieldByName("Signature").Uint())
 	fields := rv.FieldByName("Fields")
 	n := fields.Len()
@@ -214,14 +221,14 @@ func (e *Encoder) encodeStruct(rv reflect.Value) (err error) {
 	e.wr.Write([]byte{sig})
 
 	for i := 0; i < n; i++ {
-		if err = e.encode(fields.Index(i)); err != nil {
+		if err = e.marshal(fields.Index(i)); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (e *Encoder) encodeMap(rv reflect.Value) (err error) {
+func (e *Encoder) marshalMap(rv reflect.Value) (err error) {
 	n := rv.Len()
 	switch {
 	default:
@@ -253,17 +260,17 @@ func (e *Encoder) encodeMap(rv reflect.Value) (err error) {
 		}
 	}
 	for _, k := range rv.MapKeys() {
-		if err = e.encode(k); err != nil {
+		if err = e.marshal(k); err != nil {
 			return
 		}
-		if err = e.encode(rv.MapIndex(k)); err != nil {
+		if err = e.marshal(rv.MapIndex(k)); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (e *Encoder) encodeInt(rv reflect.Value) (err error) {
+func (e *Encoder) marshalInt(rv reflect.Value) (err error) {
 	var n int64
 	switch rv.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -315,7 +322,7 @@ func (e *Encoder) encodeInt(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeFloat(rv reflect.Value) (err error) {
+func (e *Encoder) marshalFloat(rv reflect.Value) (err error) {
 	var p [8]byte
 	n := rv.Float()
 	if _, err = e.wr.Write([]byte{mFloat64}); err != nil {
@@ -327,7 +334,7 @@ func (e *Encoder) encodeFloat(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeBool(rv reflect.Value) (err error) {
+func (e *Encoder) marshalBool(rv reflect.Value) (err error) {
 	v := rv.Bool()
 	if v {
 		_, err = e.wr.Write([]byte{mTrue})
@@ -337,12 +344,12 @@ func (e *Encoder) encodeBool(rv reflect.Value) (err error) {
 	return
 }
 
-func (e *Encoder) encodeNull() (err error) {
+func (e *Encoder) marshalNull() (err error) {
 	_, err = e.wr.Write([]byte{mNull})
 	return
 }
 
-func (e *Encoder) encodeList(rv reflect.Value) (err error) {
+func (e *Encoder) marshalList(rv reflect.Value) (err error) {
 	n := rv.Len()
 	switch {
 	default:
@@ -375,18 +382,26 @@ func (e *Encoder) encodeList(rv reflect.Value) (err error) {
 	}
 
 	for i := 0; i < n; i++ {
-		if err = e.encode(rv.Index(i)); err != nil {
+		if err = e.marshal(rv.Index(i)); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (e *Encoder) encodeMarshaler(v Marshaler) (err error) {
+func (e *Encoder) marshalMarshaler(v Marshaler) (err error) {
 	var p []byte
 	if p, err = v.MarshalPS(); err == nil {
 		_, err = e.wr.Write(p)
 		return nil
 	}
 	return
+}
+
+func (e *Encoder) marshalTime(rv reflect.Value) error {
+	tm := rv.Interface().(time.Time)
+	if tm.IsZero() {
+		return e.Encode(0)
+	}
+	return e.Encode(tm.UnixNano())
 }

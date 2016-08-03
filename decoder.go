@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"time"
 )
 
 // Decoder can read and decodes packstream data from an input stream.
@@ -130,16 +131,20 @@ Unmarshal can decode the following go values:
 	[]interface{}
 	map[string]interface{}
 	Structure
+	time.Time
 
 To unmarshal a list into a Go array, Unmarshal decodes packstream list elements into corresponding Go array elements.
 If the Go array is smaller than the JSON array, the additional JSON array elements are discarded.
 If the JSON array is smaller than the Go array, the additional Go array elements are set to zero values.
 
-
 To unmarshal a packstream map into a string-keyed map, Unmarshal first establishes a map to use.
 If the map is nil, Unmarshal allocates a new map.
 Otherwise Unmarshal reuses the existing map, keeping existing entries.
 Unmarshal then stores key-value pairs from the packstream map into the map.
+
+To unmarshal a time.Time, the packstream value must be an integer, which represents the number of nanoseconds elapsed
+since January 1, 1970 UTC. Then, the time structure is filled using time.Unix(). If the integer is zero, it unmarshals
+a zero value time.Time.
 
 If a packstream value is not appropriate for a given target type, or if a number overflows the target type,
 Unmarshal returns an error.
@@ -337,7 +342,15 @@ func (d *decodeState) unmarshalInt(rv reflect.Value) (err error) {
 	}
 	switch rv.Kind() {
 	default:
-		err = ErrUnMarshalTypeError
+		if rv.Type().PkgPath() == "time" && rv.Type().Name() == "Time" {
+			if v != 0 {
+				rv.Set(reflect.ValueOf(time.Unix(0, v).UTC()))
+			} else {
+				rv.Set(reflect.ValueOf(time.Time{}))
+			}
+		} else {
+			err = ErrUnMarshalTypeError
+		}
 	case reflect.Interface:
 		if rv.NumMethod() != 0 {
 			err = ErrUnMarshalTypeError

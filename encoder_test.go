@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestNewEncoder(t *testing.T) {
@@ -239,25 +240,25 @@ func TestMarshal_Marshaler(t *testing.T) {
 	}
 }
 
-//func TestEncoder_Encode_Time(t *testing.T) {
-//	var b bytes.Buffer
-//	enc := NewEncoder(&b)
-//
-//	res := []byte{0XCB, 0x14, 0x25, 0x9C, 0x88, 0x0A, 0x59, 0xDE, 0x05}
-//	tm := time.Date(2016, time.January, 02, 12, 42, 43, 5, time.FixedZone("UTC", 0))
-//	if err := enc.Encode(&tm); err != nil {
-//		t.Error(err)
-//	} else if !bytes.Equal(res, b.Bytes()) {
-//		t.Errorf("error while encoding time got %v, expected %v", b.Bytes(), res)
-//	}
-//	b.Reset()
-//
-//	res = []byte{0x0}
-//	tm = time.Time{}
-//	if err := enc.Encode(&tm); err != nil {
-//		t.Error(err)
-//	} else if !bytes.Equal(res, b.Bytes()) {
-//		t.Errorf("error while encoding time got %v, expected %v", b.Bytes(), res)
-//	}
-//	b.Reset()
-//}
+func TestEncoder_Encode_Time(t *testing.T) {
+	var b bytes.Buffer
+	enc := NewEncoder(&b)
+
+	res := []byte{mInt64, 0x14, 0x25, 0x9C, 0x88, 0x0A, 0x59, 0xDE, 0x05}
+	tm := time.Date(2016, time.January, 02, 12, 42, 43, 5, time.FixedZone("UTC", 0))
+	if err := enc.Encode(&tm); err != nil {
+		t.Error(err)
+	} else if !bytes.Equal(res, b.Bytes()) {
+		t.Errorf("error while encoding time got %v, expected %v", b.Bytes(), res)
+	}
+	b.Reset()
+
+	res = []byte{0x0}
+	tm = time.Time{}
+	if err := enc.Encode(&tm); err != nil {
+		t.Error(err)
+	} else if !bytes.Equal(res, b.Bytes()) {
+		t.Errorf("error while encoding time got %v, expected %v", b.Bytes(), res)
+	}
+	b.Reset()
+}
